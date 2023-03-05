@@ -3,6 +3,15 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
+int count_occurrence(char* path, char key) {
+  int count = 0;
+  int i;
+  for (i = 0; i < strlen(path); i++) {
+    if (path[i] == key) count++;
+  }
+  return count;
+}
+
 void traverse(char* path, char key, int* file_num, int* dir_num) {
   // Utility variables
   // MYDIRSIZ == 10
@@ -32,19 +41,23 @@ void traverse(char* path, char key, int* file_num, int* dir_num) {
       fprintf(2, "mp0: cannot stat %s\n", npath);
       exit(1);
     }
+    
+    // Count occurrence and print
+    int count = count_occurrence(npath, key);
+    printf("%s %d\n", npath, count);
     // check stat
     switch (nst.type) {
       case T_FILE:
-        printf("%s %c\n", npath, key);
         *file_num = *file_num + 1;
         break;
       case T_DIR:
-        printf("%s %c\n", npath, key);
         *dir_num = *dir_num + 1;
         traverse(npath, key, file_num, dir_num);
         break;
     }
   }
+
+  close(fd);
 }
 
 int* mp0(char* path, char key) {
@@ -61,8 +74,9 @@ int* mp0(char* path, char key) {
     fprintf(2, "%s %s\n", path, err_msg);
     close(fd);
   } else {
-    // Traversal (recursive?)
-    printf("%s %c\n", path, key); // TODO: change [key] to [number of found keys]
+    // Recursive traversal
+    int count = count_occurrence(path, key);
+    printf("%s %d\n", path, count);
     close(fd);
     traverse(path, key, &file_num, &dir_num);
   }
