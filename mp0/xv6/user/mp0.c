@@ -3,19 +3,56 @@
 #include "user/user.h"
 #include "kernel/fs.h"
 
+void traverse(char* path, char key, int* file_num, int* dir_num) {
+  // Utility variables
+  // MYDIRSIZ == 10
+  int fd;
+  struct dirent de;
+
+  char npath[128]; // buffer for the new path
+  char* p;
+  struct stat nst;
+
+  if ((fd = open(path, 0)) < 0) {
+    fprintf(2, "mp0: cannot open %s\n", path);
+    exit(1);
+  }
+
+  strcpy(npath, path);
+  p = npath + strlen(npath);
+  *(p++) = '/';
+
+  while (read(fd, &de, sizeof(de)) == sizeof(de)) {
+    if (de.inum == 0 || strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0) continue;
+    // make the whole new path
+    memmove(p, de.name, DIRSIZ);
+    p[DIRSIZ] = 0;
+    // read new path stat
+    if (stat(npath, &nst) < 0) {
+      fprintf(2, "mp0: cannot stat %s\n", npath);
+      exit(1);
+    }
+    // check stat
+    switch (nst.type) {
+      case T_FILE:
+        printf("%s %c\n", npath, key);
+        *file_num = *file_num + 1;
+        break;
+      case T_DIR:
+        printf("%s %c\n", npath, key);
+        *dir_num = *dir_num + 1;
+        traverse(npath, key, file_num, dir_num);
+        break;
+    }
+  }
+}
+
 int* mp0(char* path, char key) {
   char* err_msg = "[error opening dir]";
   // initial variables for return
   int file_num = 0;
   int dir_num = 0;
 
-  // // XXX: sanity check
-  // printf("mp0 executed!\n");
-  // printf("<root_directory>: %s\n", path);
-  // printf("<key>: %c\n", key);
-
-  // traversal
-  // Open the file
   // file variables
   int fd;
   struct stat st;
@@ -25,15 +62,15 @@ int* mp0(char* path, char key) {
     close(fd);
   } else {
     // Traversal (recursive?)
-    printf("Traversing %s and search for %c...\n", path, key);
-    file_num++;
-    dir_num++;
+    printf("%s %c\n", path, key); // TODO: change [key] to [number of found keys]
+    close(fd);
+    traverse(path, key, &file_num, &dir_num);
   }
 
   // allocate memory on the heap for return
   int* res = malloc(2 * sizeof(int));
-  res[0] = file_num;
-  res[1] = dir_num;
+  res[0] = dir_num;
+  res[1] = file_num;
   return res;
 }
 
