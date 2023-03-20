@@ -48,30 +48,76 @@ void thread_add_runqueue(struct thread *t){
             current_thread->previous->next = t;
             current_thread->previous = t;
         }
+        // p2: inherit signal handler
+        int i;
+        for (i = 0; i < 2; i++) {
+            t->sig_handler[i] = current_thread->sig_handler[i];
+        }
     }
 }
 void thread_yield(void){
-    if (setjmp(current_thread->env) == 0) {
-        schedule();
-        dispatch();
+    if (current_thread->signo == -1) {
+        if (setjmp(current_thread->env) == 0) {
+            schedule();
+            dispatch();
+        }
+    } else {
+        if (setjmp(current_thread->handler_env) == 0) {
+            schedule();
+            dispatch();
+        }
     }
 }
 void dispatch(void){
-    // Thread not runned before
-    if (current_thread->buf_set == 0) {
-        if (setjmp(current_thread->env) == 0) { // do initialization
-            current_thread->buf_set = 1;
-            current_thread->env->sp = (unsigned long) current_thread->stack_p;
+    if ((current_thread->signo == -1) || (current_thread->sig_handler[current_thread->signo] != NULL_FUNC)) {
+        if (current_thread->buf_set == 0) { // Thread not runned before
+            if (setjmp(current_thread->env) == 0) { // do initialization
+                current_thread->buf_set = 1;
+                current_thread->env->sp = (unsigned long) current_thread->stack_p;
+                longjmp(current_thread->env, current_thread->ID);
+            }
+            // p2
+            if (current_thread->signo != -1) { // a signal has come, handle the signal first
+                if (current_thread->handler_buf_set == 0) { // handler not runned before
+                    if (setjmp(current_thread->handler_env) == 0) { // handler initialization
+                        current_thread->handler_buf_set = 1;
+                        current_thread->handler_env->sp = current_thread->env->sp; // NOTE: set to current stack pointer of the thread function
+                        longjmp(current_thread->handler_env, current_thread->ID);
+                    }
+                    (current_thread->sig_handler[current_thread->signo])(current_thread->signo);
+                    current_thread->signo = -1; // reset current_thread->signo to -1 when the handler returns
+                    longjmp(current_thread->env, current_thread->ID); // resume executing the thread function
+                } else {
+                    longjmp(current_thread->handler_env, current_thread->ID);
+                }
+            }
+            // end p2
+            (current_thread->fp)(current_thread->arg);
+        } else { // Thread runned before
+            // p2
+            if (current_thread->signo != -1) { // a signal has come, handle the signal first
+                if (current_thread->handler_buf_set == 0) { // handler not runned before
+                    if (setjmp(current_thread->handler_env) == 0) { // handler initialization
+                        current_thread->handler_buf_set = 1;
+                        current_thread->handler_env->sp = current_thread->env->sp; // NOTE: set to current stack pointer of the thread function
+                        longjmp(current_thread->handler_env, current_thread->ID);
+                    }
+                    (current_thread->sig_handler[current_thread->signo])(current_thread->signo);
+                    current_thread->signo = -1; // reset current_thread->signo to -1 when the handler returns
+                    longjmp(current_thread->env, current_thread->ID); // resume executing the thread function
+                } else {
+                    longjmp(current_thread->handler_env, current_thread->ID);
+                }
+            }
+            // end p2
             longjmp(current_thread->env, current_thread->ID);
         }
-        (current_thread->fp)(current_thread->arg);
-    } else { // Thread runned before
-        longjmp(current_thread->env, current_thread->ID);
+    } else if (current_thread->sig_handler[current_thread->signo] == NULL_FUNC) { // no handler -> kill
+        thread_exit();
     }
 }
 void schedule(void){
     current_thread = current_thread->next;
-    // What if there is no threads anymore?
 }
 void thread_exit(void){
     if(current_thread->next != current_thread){ // there is currently at least 2 threads in the queue
@@ -97,8 +143,8 @@ void thread_start_threading(void){
 }
 // part 2
 void thread_register_handler(int signo, void (*handler)(int)){
-    // TODO
+    current_thread->sig_handler[signo] = handler;
 }
 void thread_kill(struct thread *t, int signo){
-    // TODO
+    t->signo = signo; // send signo to t
 }
