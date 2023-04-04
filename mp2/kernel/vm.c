@@ -438,9 +438,70 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
 /* NTU OS 2022 */
 /* Print multi layer page table. */
+void print_flags(pte_t pte) {
+  // print flags
+  if (pte & PTE_V) printf(" V");
+  if (pte & PTE_R) printf(" R");
+  if (pte & PTE_W) printf(" W");
+  if (pte & PTE_X) printf(" X");
+  if (pte & PTE_U) printf(" U");
+  printf("\n");
+}
+
+int calc_num_valid_entries(pagetable_t pagetable) {
+  const int NUM_ENTRIES = 512;
+  int i, count = 0;
+  for (i = 0; i < NUM_ENTRIES; i++) {
+    if (pagetable[i] & PTE_V) count++;
+  }
+  return count;
+}
+
 void vmprint(pagetable_t pagetable) {
-  /* TODO */
-  panic("not implemented yet\n");
+  const int NUM_ENTRIES = 512;
+  printf("page table %p\n", pagetable);
+  int l2, l1, l0;
+  pagetable_t l2_table, l1_table, l0_table;
+  pte_t pte;
+  
+  // start printing the page table
+  uint64 va;
+  l2_table = pagetable;
+  int l2v = calc_num_valid_entries(pagetable);
+  for (l2 = 0; l2 < NUM_ENTRIES; l2++) {
+    pte = l2_table[l2];
+    if (pte & PTE_V) {
+      va = ((uint64)l2 << 30) + (0 << 21) + (0 << 12);
+      printf("+-- %d: pte=%p va=%p pa=%p", l2, (uint64) l2_table + (uint64) l2 * 8, va, PTE2PA(pte)); // pte = start of table + index * 8 bytes (== 64 bits)
+      print_flags(pte);
+      l2v--;
+      
+      l1_table = (pagetable_t) PTE2PA(pte);
+      int l1v = calc_num_valid_entries(l1_table);
+      for (l1 = 0; l1 < NUM_ENTRIES; l1++) {
+        pte = l1_table[l1];
+        if (pte & PTE_V) {
+          if (l2v) { printf("|   "); } else { printf("    "); }
+          va = ((uint64)l2 << 30) + ((uint64)l1 << 21) + (0 << 12);
+          printf("+-- %d: pte=%p va=%p pa=%p", l1, (uint64) l1_table + (uint64) l1 * 8, va, PTE2PA(pte));
+          print_flags(pte);
+          l1v--;
+
+          l0_table = (pagetable_t) PTE2PA(pte);
+          for (l0 = 0; l0 < NUM_ENTRIES; l0++) {
+            pte = l0_table[l0];
+            if (pte & PTE_V) {
+              if (l2v) { printf("|   "); } else { printf("    "); }
+              if (l1v) { printf("|   "); } else { printf("    "); }
+              va = ((uint64)l2 << 30) + ((uint64)l1 << 21) + ((uint64)l0 << 12);
+              printf("+-- %d: pte=%p va=%p pa=%p", l0, (uint64) l0_table + (uint64) l0 * 8, va, PTE2PA(pte));
+              print_flags(pte);
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 /* NTU OS 2022 */
