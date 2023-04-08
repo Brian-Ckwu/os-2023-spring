@@ -443,6 +443,7 @@ void print_flags(pte_t pte) {
   if (pte & PTE_W) printf(" W");
   if (pte & PTE_X) printf(" X");
   if (pte & PTE_U) printf(" U");
+  if (pte & PTE_S) printf(" S");
   printf("\n");
 }
 
@@ -488,11 +489,20 @@ void vmprint(pagetable_t pagetable) {
           l0_table = (pagetable_t) PTE2PA(pte);
           for (l0 = 0; l0 < NUM_ENTRIES; l0++) {
             pte = l0_table[l0];
-            if (pte & PTE_V) {
+            if ((pte & PTE_V) || (pte & PTE_S)) {
               if (l2v) { printf("|   "); } else { printf("    "); }
               if (l1v) { printf("|   "); } else { printf("    "); }
               va = ((uint64)l2 << 30) + ((uint64)l1 << 21) + ((uint64)l0 << 12);
-              printf("+-- %d: pte=%p va=%p pa=%p", l0, (uint64) l0_table + (uint64) l0 * 8, va, PTE2PA(pte));
+              char* real_addr_s;
+              uint64 real_addr;
+              if (pte & PTE_V) {
+                real_addr_s = "pa";
+                real_addr = PTE2PA(pte);
+              } else {
+                real_addr_s = "blockno";
+                real_addr = PTE2BLOCKNO(pte);
+              }
+              printf("+-- %d: pte=%p va=%p %s=%p", l0, (uint64) l0_table + (uint64) l0 * 8, va, real_addr_s, real_addr);
               print_flags(pte);
             }
           }
@@ -504,7 +514,44 @@ void vmprint(pagetable_t pagetable) {
 
 /* NTU OS 2022 */
 /* Map pages to physical memory or swap space. */
+int check_mem_range(uint64 base, uint64 len) {
+  struct proc* p = myproc();
+  if (base<0 || len<0 || base+len>p->sz) return -1;
+  return 0;
+}
+
+int page_in(uint64 base, uint64 len) {
+  if (check_mem_range(base, len) < 0) return -1;
+  printf("Not implemented: page_in");
+  return 0;
+}
+
+int page_out(uint64 base, uint64 len) {
+  if (check_mem_range(base, len) < 0) return -1;
+  struct proc* p = myproc();
+  uint64 va;
+  for (va = PGROUNDDOWN(base); va < PGROUNDUP(base+len); va += PGSIZE) {
+    pte_t* pteptr = walk(p->pagetable, va, 0);
+    if (*pteptr & PTE_V) { // if the page is in physical memory
+      *pteptr |= PTE_S; // set the swapped-out bit
+      *pteptr &= ~PTE_V; // clear the valid bit
+      begin_op(); uint blockno = balloc_page(ROOTDEV); end_op();
+      char* pa = (char*) PTE2PA(*pteptr);
+      begin_op(); write_page_to_disk(ROOTDEV, pa, blockno); end_op();
+      kfree((void*) pa);
+      *pteptr = BLOCKNO2PTE(blockno) | PTE_FLAGS(*pteptr); // update the page table entry to be blockno + flags
+    }
+  }
+  return 0;
+}
+
 int madvise(uint64 base, uint64 len, int advice) {
-  /* TODO */
-  panic("not implemented yet\n");
+  if (advice == MADV_NORMAL) {
+    return check_mem_range(base, len);
+  } else if (advice == MADV_WILLNEED) {
+    return page_in(base, len);
+  } else if (advice == MADV_DONTNEED) {
+    return page_out(base, len);
+  }
+  return 0;
 }
