@@ -8,9 +8,8 @@
 
 /* NTU OS 2022 */
 /* Page fault handler */
-int handle_pgfault() {
+int handle_pgfault(uint64 va) {
   /* Find the address that caused the fault */
-  uint64 va = r_stval();
   struct proc* p = myproc();
   
   char* newmem = kalloc();

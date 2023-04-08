@@ -522,7 +522,22 @@ int check_mem_range(uint64 base, uint64 len) {
 
 int page_in(uint64 base, uint64 len) {
   if (check_mem_range(base, len) < 0) return -1;
-  printf("Not implemented: page_in");
+  struct proc* p = myproc();
+  uint64 va;
+  for (va = PGROUNDDOWN(base); va < PGROUNDUP(base+len); va += PGSIZE) {
+    pte_t* pteptr = walk(p->pagetable, va, 0);
+    if (*pteptr & PTE_S) { // if the page is previously swapped out
+      *pteptr &= ~PTE_S; // clear the swapped-out bit
+      *pteptr |= PTE_V; // set the valid bit
+      char* pa = kalloc();
+      uint blockno = PTE2BLOCKNO(*pteptr);
+      begin_op(); read_page_from_disk(ROOTDEV, pa, blockno); end_op();
+      begin_op(); bfree_page(ROOTDEV, blockno); end_op();
+      *pteptr = PA2PTE(pa) | PTE_FLAGS(*pteptr);
+    } else if (!(*pteptr & PTE_V)) { // if the page is not swapped out and not in physical memory -> handle page fault
+      handle_pgfault(va);
+    }
+  }
   return 0;
 }
 
