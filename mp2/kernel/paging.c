@@ -10,8 +10,18 @@
 /* Page fault handler */
 int handle_pgfault() {
   /* Find the address that caused the fault */
-  /* uint64 va = r_stval(); */
-
-  /* TODO */
-  panic("not implemented yet\n");
+  uint64 va = r_stval();
+  struct proc* p = myproc();
+  
+  char* newmem = kalloc();
+  if (newmem) { // success
+    memset(newmem, 0, PGSIZE);
+    if (mappages(p->pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)newmem, PTE_U|PTE_R|PTE_W|PTE_X) != 0) {
+      kfree(newmem);
+      p->killed = 1;
+    }
+  } else {
+    p->killed = 1;
+  }
+  return 0;
 }
