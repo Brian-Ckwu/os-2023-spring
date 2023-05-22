@@ -1,0 +1,8 @@
+
+xv6 kernel is booting
+
+init: starting sh
+$ task4
+dispatch thread#1 at 0: allocated_time=3
+[ERROR] number of threads may exceed MAX_THRD_NUM
+$ qemu-system-riscv64: terminating on signal 15 from pid 2017 (make)
